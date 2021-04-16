@@ -10,4 +10,4 @@ async def test_list_devices():
     print(await list_devices())
 
 
-asyncio.run(test_list_devices())
+asyncio.run(test_list_adb_devices())

@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 redis_client = redis.Redis(
     host="10.143.15.226", port="6379", password="waibiwaibiwaibibabo"
 )
-abandon_devices = "tiktok:abandon_device"
 
 """
 List of devices attached
@@ -125,11 +124,15 @@ async def change_android_id(adb_device_id):
     )
 
 
+def is_exclude_device(device):
+    return redis_client.sismember("tiktok:device:exclude", device["name"])
+
+
 def is_device_in_use(device):
     return (
         device["status"]
         or device["name"] in running_devices_set
-        or redis_client.sismember(abandon_devices, device["name"])
+        or is_exclude_device(device)
     )
 
 
@@ -157,6 +160,7 @@ async def task():
                 change_android_id(device["device_id"])
                 while True:
                     clear_data(device["device_id"])
+                    await asyncio.sleep(3)
                     logger.info("Run Test: " + str(device))
                     stdout, stderr = await run_app(device["device_id"])
                     logger.warning("Test exit with stdout: " + stdout)
