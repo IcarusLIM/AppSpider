@@ -17,7 +17,7 @@
 ## 工具
 
 用于前期APP分析、后期数据抓取，主要包括：
-- [fiddler](https://www.telerik.com/download/fiddler) : 抓包分析
+- [fiddler](https://www.telerik.com/download/fiddler) : 抓包分析，（或手机端抓包工具[HttpCanary](https://m.apkpure.com/httpcanary-%E2%80%94-http-sniffer-capture-analysis/com.guoshi.httpcanary)和[PacketCapture](https://m.apkpure.com/packet-capture/app.greyshirts.sslcapture)）
 - [jadx](https://github.com/skylot/jadx) : 安卓APP反编译工具
 - [adb](https://developer.android.com/studio/command-line/adb) : Android Debug Bridge，与安卓设备通信，可执行拷贝、安装、启动APP操作
 - [android studio](https://developer.android.com/studio) : 安卓开发IDE
@@ -72,7 +72,7 @@ genymotion安装：[下载](https://www.genymotion.com/download/)linux安装文�
   - fiddler : 抓包，可视化分析
   - Android Studio : 安卓开发IDE
   - adb : 与虚拟机通信，包含在SDK Tools中，可通过Android Studio附带的SDK Manager下载，路径`<sdk_root>/platform-tools/`
-  - uiautomatorviewer: Android页面检查工具，同上包含在SDK Tools中，路径`<sdk_root>/tools/`
+  - uiautomatorviewer : Android页面检查工具，同上包含在SDK Tools中，路径`<sdk_root>/tools/`
   - jadx : apk反编译（可选）
 
 - 运行时：
@@ -84,14 +84,64 @@ genymotion安装：[下载](https://www.genymotion.com/download/)linux安装文�
 | 步骤 | 详细 | 
 | --- | --- | 
 | 创建模拟器 | 在genymotion中创建，Android 8.0版本；完成后启动模拟器，进行后续步骤 | 
-| 配置代理 | 设置模拟器，使用fiddler或mitmproxy代理请求，[配置方法](https://support.google.com/android/answer/9654714?hl=zh-Hans#zippy=%2C%E8%AE%BE%E7%BD%AE%E4%BB%A3%E7%90%86%E4%BB%A5%E8%BF%9E%E6%8E%A5%E6%89%8B%E6%9C%BA) | 
+| 配置代理 | 设置模拟器，使用fiddler或mitmproxy代理请求，[配置方法](https://www.telerik.com/blogs/how-to-capture-android-traffic-with-fiddler) | 
 | 安装genymotion arm translation | arm版APP无法在x86的模拟器上直接运行，需进行转换。安装包可通过adb刷入系统，或直接拖拽安装（最高支持8.0版本，[下载](https://github.com/m9rco/Genymotion_ARM_Translation)） | 
 | 安装抖音APP | 官网下载安装即可，可通过adb或拖拽安装 | 
 | 安装xposed | 包含[xposed framework](https://dl-xda.xposed.info/framework/)(刷机包)和[xposed installer](https://forum.xda-developers.com/attachments/xposedinstaller_3-1-5-apk.4393082/)(APP)安装方式同上。注：xposed最高支持andorid 8.0，更高版本安卓可使用magisk+edxposed方案，edxposed完全兼容xposded插件 | 
-| 安装xposed插件 | xposed插件本质是android APP，这里需要使用xposed实现ssl pinning破解([Just Trust Me](https://github.com/Fuzion24/JustTrustMe))和虚拟mac地址，稍后展开 | 
+| 安装xposed插件 | xposed插件本质是android APP，这里需要使用xposed实现ssl pinning破解([JustTrustMe](https://github.com/Fuzion24/JustTrustMe))和虚拟mac地址，稍后展开 | 
 
 ### 代码实现
 
+代码主要包括以下部分：
+- instrument-test : 标准android APP，按照[UI Automator](https://developer.android.com/training/testing/ui-automator)测试框架编写，实际执行启动抖音APP、输入查询词、点击搜索和滚屏动作
+- runner : python脚本，用于管理模拟器，在多个模拟器上启动由instrument-test构建的测试APP，从而让测试APP接管对抖音的操作
+- macaddr-changer : xposed插件，hook mac地址，重启时随机生成
+- keyserver : 查询词放在redis中，由于不清楚app内如何连redis，所以包装成http服务提供查询词（不展开）
+- proxy : 基于mitmproxy，记录搜索结果，保存到redis。*注：搜索结果可能是几段json字符串拼接，需解析（不展开）
+- spider : 解析proxy的结果，下载视频并存储（不展开）
+
+下面按照实现顺序简要分析
+
+#### Anti-Anti
+
+Xposed是一个运行在Android系统的hook框架，通过对`Zygote`线程的定制，实现了运行时hook方法调用的能力，可实现方法定制甚至替换，详细信息参见[文档](https://github.com/rovo89/XposedBridge/wiki/Development-tutorial)和[API](https://api.xposed.info/reference/packages.html)
+
+部分应用通过应用列表、调用栈等手段检测xposed，在安装了xposed的设备上直接闪退，可采用Magisk+EdXposed，用Magisk Hide绕过
+
+##### SSL Pinning
+
+中间人攻击需要在客户端(Android)安装代理颁发的CA证书，安卓7.0以后证书必须安装到系统证书目录下（需ROOT）[教程](https://blog.zhangkunzhi.com/2020/02/10/%E5%AE%89%E5%8D%93%E5%AF%BC%E5%85%A5%E8%AF%81%E4%B9%A6%E5%88%B0%E7%B3%BB%E7%BB%9F%E7%9B%AE%E5%BD%95%E4%B8%AD/index.html)，而部分应用采用了[ssl pinning](http://fiddler.wikidot.com/certpinning)技术，只信任特定证书，表现形式为：即使已将fiddler证书安装到系统证书目录，抓包依然报网络错误或无法解码`Fiddler's HTTPS Decryption feature is enabled, but this specific tunnel was configured not to be decrypted`
+
+通过反编译抖音APP可以看到抖音使用了`okhttp3`包，推测ssl pinning由该包实现，验证方法位于`okhttp3.CertificatePinner`包，方法签名：
+```java
+public void check(String, List)
+```
+xposed hook核心代码
+```java
+XposedHelpers.findAndHookMethod("okhttp3.CertificatePinner", classLoader, "check", String.class, List.class, new XC_MethodReplacement() {
+  public Object replaceHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
+      return null;
+  }
+})
+```
+这里选择JustTrustMe模块
+
+##### 设备封禁
+
+搜索几次后，后续搜索结果为空
+
+
+
+
+
+> 另外抖音似乎针对**多设备同IP**的情况有限制，在同一台linux上起多个模拟器时，只有一到两台模拟器有搜索结果  
+> 这里通过在多台开发机运行mitmproxy，将模拟器分别连接到不同mitmproxy实例解决
+
+#### runner
+
+
+
+#### macaddr-changer
 
 
 #### ls
