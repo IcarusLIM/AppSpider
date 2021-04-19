@@ -119,9 +119,10 @@ async def clear_data(adb_device_id):
 
 async def change_android_id(adb_device_id):
     random_id = "".join([random.choice("abcdef1234567890") for i in range(16)])
-    return await run(
+    await run(
         f"adb -s {adb_device_id} shell settings put secure android_id {random_id}"
     )
+    return random_id
 
 
 def is_exclude_device(device):
@@ -157,9 +158,9 @@ async def task():
             is_start = await start_device(device)
             if is_start:
                 # mac address is hooked by xposed module, and awalys change after boot
-                change_android_id(device["device_id"])
+                await change_android_id(device["device_id"])
                 while True:
-                    clear_data(device["device_id"])
+                    await clear_data(device["device_id"])
                     await asyncio.sleep(3)
                     logger.info("Run Test: " + str(device))
                     stdout, stderr = await run_app(device["device_id"])
@@ -184,7 +185,7 @@ async def task():
 
 
 async def main():
-    await asyncio.gather(*[task() for i in range(4)])
+    await asyncio.gather(*[task() for i in range(6)])
 
 
 if __name__ == "__main__":

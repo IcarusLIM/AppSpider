@@ -45,6 +45,7 @@ yum groupinstall "Xfce" -y
 #### Android模拟器
 
 > virtualbox依赖虚拟化技术，无法在虚机运行，请使用实机
+> genymotion依赖的libstdc++.so在centos7上不满足，需自行编译；建议直接使用centos8
 
 选用genymotion+virtualbox，相比其他模拟器，提供了较丰富的命令行工具，更方便编程操作
 
@@ -54,20 +55,34 @@ dnf config-manager --add-repo=https://download.virtualbox.org/virtualbox/rpm/el/
 yum search virtualbox
 yum install virtualbox
 ```
-> 若最新版virtualbox卡顿崩溃，可尝试安装6.0及以下版本
 
-genymotion安装：[下载](https://www.genymotion.com/download/)linux安装文件，直接运行即可完成安装
+> 若最新版virtualbox卡顿崩溃，可尝试安装6.0及以下版本
 
 > 若virtualbox启动报错：  
 > WARNING: The vboxdrv kernel module is not loaded. Either there is no module available for the current kernel (4.18.0-193.el8.x86_64) or it failed to load. If your system is using EFI Secure Boot you may need to sign the kernel modules (vboxdrv, vboxnetflt, vboxnetadp, vboxpci) before you can load them  
 > 可尝试安装dkms解决
 
+genymotion安装：[下载](https://www.genymotion.com/download/)linux安装文件，直接运行即可完成安装
+
 #### 开发工具
+
+开发阶段和运行时所需工具
+
+- 运行环境：
+  - 
+
+|  | 开发环境 | 运行环境 |
+|---|---|---|  
+| 抓包 | fiddler | mitmproxy |  
+| adb |  |  |
+
+
+请在开发环境安装android studio、fiddler工具
+
 
 
 ### APP安装
 
-### 抓包
 
 
 

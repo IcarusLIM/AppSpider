@@ -1,3 +1,5 @@
+from datetime import datetime
+
 def get_nested(o, attrs):
     obj = o
     for attr in attrs:
@@ -6,6 +8,19 @@ def get_nested(o, attrs):
         else:
             return None
     return obj
+
+meta_file = None
+meta_file_time = None
+def get_meta_file(dir):
+    global meta_file
+    global meta_file_time
+    day = datetime.now().strftime("%Y-%m-%d")
+    if day != meta_file_time:
+        if meta_file:
+            meta_file.close()
+        meta_file = open(f"{dir}/{day}.txt", "a")
+        meta_file_time = day
+    return meta_file
 
 
 # import os

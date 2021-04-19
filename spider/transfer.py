@@ -3,11 +3,13 @@ import logging
 import json
 import time
 from config import redis_client
+from utils import get_meta_file
 
 
 logger = logging.getLogger()
 logger.setLevel(logging.DEBUG)
 
+meta_file_dir = "raw_meta"
 
 def save_aweme(key, aweme):
     redis_client.rpush("tiktok:aweme", f"{key}${json.dumps(aweme, ensure_ascii=False)}")
@@ -23,8 +25,7 @@ def main():
         [key, content] = l.split("$", 1)
         key = key.replace("/", "")
         logging.info("append: " + key)
-        with open("raw_meta/meta.txt", "a") as f:
-            f.write(f"{key}\t{content}\n")
+        get_meta_file(meta_file_dir).write(f"{key}\t{content}\n")
 
         meta = json.loads(content)
         data = meta.get("data")

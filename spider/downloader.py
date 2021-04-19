@@ -1,4 +1,4 @@
-from utils import get_nested
+from utils import get_nested, get_meta_file
 from config import redis_client
 import asyncio
 import json
@@ -15,6 +15,7 @@ headers = {
 }
 
 file_save_dir = "videos"
+meta_file_dir = "aweme_meta"
 hdfs_path = "/user/slave/websac/tiktok"
 loop = asyncio.get_event_loop()
 STOP_FLAG = False
@@ -68,7 +69,7 @@ async def task(i):
             await asyncio.sleep(5)
             continue
         [key, aweme] = item.decode("utf-8").split("$", 1)
-        aweme_file.write(f"{key}\t{aweme}\n")
+        get_meta_file(meta_file_dir).write(f"{key}\t{aweme}\n")
         aweme = json.loads(aweme)
 
         file_name = aweme.get("aweme_id") + ".mp4"
@@ -86,7 +87,6 @@ async def task(i):
             await upload_video(file_name)
         except Exception as e:
             logger.warning(e)
-    aweme_file.close()
 
 
 def signal_recv(signal, frame):
@@ -112,6 +112,7 @@ async def clean_uncomplete():
 async def main():
     await clean_uncomplete()
     await asyncio.gather(*([task(i) for i in range(10)]))
+    get_meta_file(meta_file_dir).close()
     # await session.close()
 
 
