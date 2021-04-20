@@ -104,7 +104,7 @@ genymotion安装：[下载](https://www.genymotion.com/download/)linux安装文�
 
 #### Anti-Anti
 
-Xposed是一个运行在Android系统的hook框架，通过对`Zygote`线程的定制，实现了运行时hook方法调用的能力，可实现方法定制甚至替换，详细信息参见[文档](https://github.com/rovo89/XposedBridge/wiki/Development-tutorial)和[API](https://api.xposed.info/reference/packages.html)
+Xposed是一个运行在Android系统的hook框架，通过对`Zygote`线程的定制，实现了运行时hook方法调用的能力，可实现方法定制甚至替换，详细信息参见[文档](https://github.com/rovo89/XposedBridge/wiki/Development-tutorial)和[API](https://api.xposed.info/reference/packages.html)。这里借助xposde绕过抖音的反爬机制
 
 部分应用通过应用列表、调用栈等手段检测xposed，在安装了xposed的设备上直接闪退，可采用Magisk+EdXposed，用Magisk Hide绕过
 
@@ -112,11 +112,11 @@ Xposed是一个运行在Android系统的hook框架，通过对`Zygote`线程的�
 
 中间人攻击需要在客户端(Android)安装代理颁发的CA证书，安卓7.0以后证书必须安装到系统证书目录下（需ROOT）[教程](https://blog.zhangkunzhi.com/2020/02/10/%E5%AE%89%E5%8D%93%E5%AF%BC%E5%85%A5%E8%AF%81%E4%B9%A6%E5%88%B0%E7%B3%BB%E7%BB%9F%E7%9B%AE%E5%BD%95%E4%B8%AD/index.html)，而部分应用采用了[ssl pinning](http://fiddler.wikidot.com/certpinning)技术，只信任特定证书，表现形式为：即使已将fiddler证书安装到系统证书目录，抓包依然报网络错误或无法解码`Fiddler's HTTPS Decryption feature is enabled, but this specific tunnel was configured not to be decrypted`
 
-通过反编译抖音APP可以看到抖音使用了`okhttp3`包，推测ssl pinning由该包实现，验证方法位于`okhttp3.CertificatePinner`包，方法签名：
+通过反编译抖音APP可以看到抖音使用了`okhttp3`包，推测ssl pinning由该包实现，验证方法位于`okhttp3.CertificatePinner`类，方法签名：
 ```java
 public void check(String, List)
 ```
-xposed hook核心代码
+从xposed的模块库里能直接找到破解ssl pinning的模块，这里使用JustTrustMe模块，其hook的核心代码
 ```java
 XposedHelpers.findAndHookMethod("okhttp3.CertificatePinner", classLoader, "check", String.class, List.class, new XC_MethodReplacement() {
   public Object replaceHookedMethod(XC_MethodHook.MethodHookParam methodHookParam) throws Throwable {
@@ -124,11 +124,21 @@ XposedHelpers.findAndHookMethod("okhttp3.CertificatePinner", classLoader, "check
   }
 })
 ```
-这里选择JustTrustMe模块
 
 ##### 设备封禁
 
-搜索几次后，后续搜索结果为空
+抖音APP未登录状态下，搜索几次后，后续搜索结果为空。抓包发现请求参数中带有device_id、openudid，推测抖音根据二者标识设备
+
+通常openudid的生成策略为：  
+1. 若存储中存在openudid相关文件，直接读取
+2. 否则获取android_id，若有效则作为openudid
+3. 否则随机生成，并存储供下次读取
+
+清除抖音APP数据后重新启动，新生成的openudid和andorid_id一致，可以判断符合如上策略，因此可通过更换android_id间接更换openudid
+
+device_id值和Android的`Device ID/IMEI`不同，参考[项目](https://github.com/coder-fly/douyin_device_register)，推测device_id根据mac地址和openudid生成。直接替换mac地址文件存在问题且高版本安卓难以替换
+
+基于以上，可以实现设备被封禁后自动更换标识继续抓取
 
 
 
