@@ -203,43 +203,48 @@ instrument-test用于控制抖音APP，基于UI Automator，实现了如下操�
 下面简单介绍一些需要特殊注意的点
 
 1. 页面元素定位  
-   通常可使用resource_id定位页面元素(`By.res("pkgName", "resouceId")`)，必要时可使用depth和children进一步定位  
-   可用uiautomatorviewer查看页面结构（工具位于`<android SDK>/tools`目录下），或使用`adb shell uiautomator dump`命令将页面结构dump到`/sdcard/window_dump.xml`  
-   uiautomator是通过AccessibilityService(无障碍)实现的，默认会等待视图不再变化（`uiAutomation.waitForIdle(1000, 1000 * 10)`）一段时间后才dump页面结构，因此对持续更新的视图会超时报错，表现为：uiautomatorviewer报错`Error while obtaining UI hierarchy XML file: com.android.ddmlib.SyncException: Remote object doesn't exist!`；uiautomator dump命令报错`ERROR: could not get idle state`。解决方式：基于UI Automator编写APP，使用`uiDevice.dumpWindowHierarchy`直接dump，[项目地址](https://github.com/sccjava/AndroidDumpUI)
+    通常可使用resource_id定位页面元素(`By.res("pkgName", "resouceId")`)，必要时可使用depth和children进一步定位  
+    可用uiautomatorviewer查看页面结构（工具位于`<android SDK>/tools`目录下），或使用`adb shell uiautomator dump`命令将页面结构dump到`/sdcard/window_dump.xml`  
+    uiautomator是通过AccessibilityService(无障碍)实现的，默认会等待视图不再变化（`uiAutomation.waitForIdle(1000, 1000 * 10)`）一段时间后才dump页面结构，因此对持续更新的视图会超时报错，表现为：uiautomatorviewer报错`Error while obtaining UI hierarchy XML file: com.android.ddmlib.SyncException: Remote object doesn't exist!`；uiautomator dump命令报错`ERROR: could not get idle state`。解决方式：基于UI Automator编写APP，使用`uiDevice.dumpWindowHierarchy`直接dump，[项目地址](https://github.com/sccjava/AndroidDumpUI)
 2. 页面元素检查  
-   代码中常常需要进行页面元素查找，或等待元素出现，如：找到搜索按钮并点击，等待搜索结果出现，然后滚屏  
-   常用方法有`uiDevice.wait`、`Until.findObject`等，由于这些方法中同样包含`waitForIdle`逻辑，持续更新的视图会导致方法长时间不返回拖慢速度。`waitForIdle`默认超时10s，可减少超时时间，设为1~1.5s较合适，过短易导致`androidx.test.uiautomator.StaleObjectException`
-   ```java
-   Configurator.getInstance().setWaitForIdleTimeout(1000);
-   ```
+    代码中常常需要进行页面元素查找，或等待元素出现，如：找到搜索按钮并点击，等待搜索结果出现，然后滚屏  
+    常用方法有`uiDevice.wait`、`Until.findObject`等，由于这些方法中同样包含`waitForIdle`逻辑，持续更新的视图会导致方法长时间不返回拖慢速度。`waitForIdle`默认超时10s，可减少超时时间，设为1~1.5s较合适，过短易导致`androidx.test.uiautomator.StaleObjectException`
+
+    ```java
+    Configurator.getInstance().setWaitForIdleTimeout(1000);
+    ```
+
 3. 权限    
-   本例中，需要发送http请求获取查询词，因此需要申请网络权限，在`AndroidManifest.xml`中添加：
-   ```xml
-   <uses-permission android:name="android.permission.INTERNET" />
-   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-   <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-   ```
-   *注：网络权限申请仅添加到测试APP无效，请同时添加到目标APP（测试APP: `app/src/androidTest`，目标APP：`app/src/main`）
+    本例中，需要发送http请求获取查询词，因此需要申请网络权限，在`AndroidManifest.xml`中添加：
+
+    ```xml
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
+    ```
+
+    *注：网络权限申请仅添加到测试APP无效，请同时添加到目标APP（测试APP: `app/src/androidTest`，目标APP：`app/src/main`）
 4. 抖音APP启停  
-   方式一：通过代码控制启停  
-   ```java
-   // 启动
-   Context context = getApplicationContext();
-   final Intent intent = context.getPackageManager().getLaunchIntentForPackage("com.ss.android.ugc.aweme");
-   intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
-   context.startActivity(intent);
+    方式一：通过代码控制启停  
 
-   // 停止
-   mDevice.executeShellCommand("am force-stop com.ss.android.ugc.aweme"); //等价于：adb shell am force-stop com.ss.android.ugc.aweme
-   ```
-   
-   > 应用包名获取方式：`adb shell dumpsys activity top`
+    ```java
+    // 启动
+    Context context = getApplicationContext();
+    final Intent intent = context.getPackageManager().getLaunchIntentForPackage("com.ss.android.ugc.aweme");
+    intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);
+    context.startActivity(intent);
 
-   方式二：模拟点按  
-   模拟点击图标启动；模拟点击home->点击多任务键->点击多任务卡片中抖音的x号
+    // 停止
+    mDevice.executeShellCommand("am force-stop com.ss.android.ugc.aweme"); //等价于：adb shell am force-stop com.ss.android.ugc.aweme
+    ```
 
-   测试发现代码控制易造成应用启动卡死，可能和抖音有关，最终采用模拟点按方式
+    > 应用包名获取方式：`adb shell dumpsys activity top`
+
+    方式二：模拟点按  
+    模拟点击图标启动；模拟点击home->点击多任务键->点击多任务卡片中抖音的x号
+
+    测试发现代码控制易造成应用启动卡死，可能和抖音有关，最终采用模拟点按方式
 
 > 其他：  
 > 多次搜索之间穿插回信息流页刷几下  
@@ -253,59 +258,68 @@ instrument-test用于控制抖音APP，基于UI Automator，实现了如下操�
 首先启动proxy、keyserver等其他服务；然后启动安卓模拟器，运行上一步构建出的测试APP，自动化搜索查询词开始抓取
 
 runner使用python编写，实现如下功能：  
-1. 检测已创建、已启动的安卓模拟器  
-   ```bash
-   # 已创建列表
-   vboxmanage list vms # virtualbox 提供
-   # return:
-   # "Clone - Google Nexus 6P" {e8447dd6-94e5-4e54-886a-d632cab1e709}
-   # "Clone - Google Nexus 6P_1" {e8447dd6-94e5-4e54-886a-d632cab1e709}
-   # "Clone - Google Nexus 6P_2" {e8447dd6-94e5-4e54-886a-d632cab1e709}
+1. 检测已创建、已启动的安卓模拟器
 
-   # 已启动列表
-   adb devices
-   # return:
-   # 192.168.87.101:5555     device
+    ```bash
+    # 已创建列表
+    vboxmanage list vms # virtualbox 提供
+    # return:
+    # "Clone - Google Nexus 6P" {e8447dd6-94e5-4e54-886a-d632cab1e709}
+    # "Clone - Google Nexus 6P_1" {e8447dd6-94e5-4e54-886a-d632cab1e709}
+    # "Clone - Google Nexus 6P_2" {e8447dd6-94e5-4e54-886a-d632cab1e709}
 
-   # 获取二者对应关系
-   adb -s 192.168.87.101:5555 shell getprop | grep "ro.product.model" # adb -s <serial_number>  发送命令到指定设备
-   # return:
-   # [ro.product.model]: [Clone - Google Nexus 6P_2]
-   ```
+    # 已启动列表
+    adb devices
+    # return:
+    # 192.168.87.101:5555     device
+
+    # 获取二者对应关系
+    adb -s 192.168.87.101:5555 shell getprop | grep "ro.product.model" # adb -s <serial_number>  发送命令到指定设备
+    # return:
+    # [ro.product.model]: [Clone - Google Nexus 6P_2]
+    ```
+
 2. 启动/关闭模拟器  
-   ```bash
-   # 启动模拟器
-   player -n <device_name> # device_name, eg: Clone - Google Nexus 6P, Clone - Google Nexus 6P_1
 
-   # 关闭模拟器
-   player -n <device_name> -x
+    ```bash
+    # 启动模拟器
+    player -n <device_name> # device_name, eg: Clone - Google Nexus 6P, Clone - Google Nexus 6P_1
 
-   # 检测启动完成
-   adb -s <serial_number> shell getprop init.svc.bootanim
-   # return:
-   # '' | running | stopped, stoped==boot finish
-   ```
+    # 关闭模拟器
+    player -n <device_name> -x
+
+    # 检测启动完成
+    adb -s <serial_number> shell getprop init.svc.bootanim
+    # return:
+    # '' | running | stopped, stoped==boot finish
+    ```
+
 3. 运行测试APP  
-   测试APP可以通过adb命令安装到模拟器，也可以提前装好  
-   模拟器启动完成后，首先清空抖音APP数据（确保启动时触发生成新的device_id和openudid，主要针对模拟器之前被使用过的情况）  
-   ```bash
-   adb -s <serial_number> shell pm clear com.ss.android.ugc.aweme
-   ```
-   mac地址已由macaddr-changer随机生成，接下来通过adb更换android_id  
-   ```bash
-   adb -s <serial_number> shell settings put secure android_id <random_android_id>
-   ```
-   最后，启动测试APP
-   ```bash
-   adb -s <serial_number> shell am instrument -w \
-   -e debug false \
-   -e class com.hamster.androidappspider.TiktokSearchTest \
-   com.hamster.androidappspider.test/androidx.test.runner.AndroidJUnitRunner
-   # 其中
-   # com.hamster.androidappspider.TiktokSearchTest 为测试类
-   # com.hamster.androidappspider.test 为测试APP包名
-   # androidx.test.runner.AndroidJUnitRunner 为runner_class
-   ```
+    测试APP可以通过adb命令安装到模拟器，也可以提前装好  
+    模拟器启动完成后，首先清空抖音APP数据（确保启动时触发生成新的device_id和openudid，主要针对模拟器之前被使用过的情况）
+
+    ```bash
+    adb -s <serial_number> shell pm clear com.ss.android.ugc.aweme
+    ```
+    
+    mac地址已由macaddr-changer随机生成，接下来通过adb更换android_id  
+    
+    ```bash
+    adb -s <serial_number> shell settings put secure android_id <random_android_id>
+    ```
+    
+    最后，启动测试APP
+    
+    ```bash
+    adb -s <serial_number> shell am instrument -w \
+    -e debug false \
+    -e class com.hamster.androidappspider.TiktokSearchTest \
+    com.hamster.androidappspider.test/androidx.test.runner.AndroidJUnitRunner
+    # 其中
+    # com.hamster.androidappspider.TiktokSearchTest 为测试类
+    # com.hamster.androidappspider.test 为测试APP包名
+    # androidx.test.runner.AndroidJUnitRunner 为runner_class
+    ```
 
 > `genymotion-shell -c "devices list"`也能获取已创建模拟器，但性能差易卡死，不推荐
 
