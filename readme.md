@@ -136,9 +136,9 @@ XposedHelpers.findAndHookMethod("okhttp3.CertificatePinner", classLoader, "check
 2. 否则获取android_id，若有效则作为openudid
 3. 否则随机生成，并存储供下次读取
 
-清除抖音APP数据后重新启动，新生成的openudid和andorid_id一致，可以判断符合如上策略，因此可通过更换android_id间接更换openudid
+清除抖音APP数据后重新启动，新生成的openudid和andorid_id一致，可以判断符合上述策略，因此可通过更换android_id间接更换openudid
 
-device_id值和Android的`Device ID/IMEI`不同，推测device_id根据mac地址和openudid生成（[参考](https://github.com/coder-fly/douyin_device_register)），想要生成新的device_id需要实现更换mac。直接替换mac地址文件存在问题（如导致通过wlan连接的adb断连）且高版本安卓难以替换，因此使用xposed向抖音返回假的可更换的mac地址来解决。
+device_id值和Android的`Device ID/IMEI`不同，推测device_id根据mac地址和openudid生成（[参考](https://github.com/coder-fly/douyin_device_register)），想要生成新的device_id需要更换mac地址。直接替换mac地址文件存在问题（如导致通过wlan连接的adb断连）且高版本安卓难以替换，因此使用xposed向抖音返回假的可更换的mac地址来解决。
 
 android 6.0及以上获取mac地址方式如下：
 ```java
@@ -208,7 +208,7 @@ instrument-test用于控制抖音APP，基于UI Automator，实现了如下操�
    uiautomator是通过AccessibilityService(无障碍)实现的，默认会等待视图不再变化（`uiAutomation.waitForIdle(1000, 1000 * 10)`）一段时间后才dump页面结构，因此对持续更新的视图会超时报错，表现为：uiautomatorviewer报错`Error while obtaining UI hierarchy XML file: com.android.ddmlib.SyncException: Remote object doesn't exist!`；uiautomator dump命令报错`ERROR: could not get idle state`。解决方式：基于UI Automator编写APP，使用`uiDevice.dumpWindowHierarchy`直接dump，[项目地址](https://github.com/sccjava/AndroidDumpUI)
 2. 页面元素检查  
    代码中常常需要进行页面元素查找，或等待元素出现，如：找到搜索按钮并点击，等待搜索结果出现，然后滚屏  
-   常用方法有`uiDevice.wait`、`Until.findObject`等，由于这些方法中同样包含`waitForIdle`逻辑，导致方法长时间不返回拖慢速度。`waitForIdle`默认超时10s，可配置减少超时时间，设为1~1.5s较合适，过短易导致`androidx.test.uiautomator.StaleObjectException`
+   常用方法有`uiDevice.wait`、`Until.findObject`等，由于这些方法中同样包含`waitForIdle`逻辑，持续更新的视图会导致方法长时间不返回拖慢速度。`waitForIdle`默认超时10s，可减少超时时间，设为1~1.5s较合适，过短易导致`androidx.test.uiautomator.StaleObjectException`
    ```java
    Configurator.getInstance().setWaitForIdleTimeout(1000);
    ```
@@ -222,7 +222,7 @@ instrument-test用于控制抖音APP，基于UI Automator，实现了如下操�
    ```
    *注：网络权限申请仅添加到测试APP无效，请同时添加到目标APP（测试APP: `app/src/androidTest`，目标APP：`app/src/main`）
 4. 抖音APP启停  
-   方式一：通过代码控制启停
+   方式一：通过代码控制启停  
    ```java
    // 启动
    Context context = getApplicationContext();
@@ -233,6 +233,7 @@ instrument-test用于控制抖音APP，基于UI Automator，实现了如下操�
    // 停止
    mDevice.executeShellCommand("am force-stop com.ss.android.ugc.aweme"); //等价于：adb shell am force-stop com.ss.android.ugc.aweme
    ```
+   
    > 应用包名获取方式：`adb shell dumpsys activity top`
 
    方式二：模拟点按  
