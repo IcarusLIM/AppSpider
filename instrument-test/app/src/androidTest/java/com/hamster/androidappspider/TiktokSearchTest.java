@@ -1,9 +1,9 @@
 package com.hamster.androidappspider;
 
-import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.os.RemoteException;
 import android.os.SystemClock;
 import android.util.Log;
 
@@ -33,6 +33,9 @@ import okhttp3.Response;
 
 import static androidx.test.core.app.ApplicationProvider.getApplicationContext;
 import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentation;
+
+import androidx.test.uiautomator.StaleObjectException;
+
 import static org.hamcrest.CoreMatchers.notNullValue;
 import static org.junit.Assert.assertThat;
 
@@ -53,7 +56,6 @@ public class TiktokSearchTest {
     private static final String KEY_SERVER = "http://10.160.33.75:4396";
     private Random random = new Random();
 
-
     @Before
     public void startMainActivityFromHomeScreen() {
         // 解决selector长时间等待视图Idle导致不返回， 0.5s时报“StaleObjectException”
@@ -68,7 +70,12 @@ public class TiktokSearchTest {
         assertThat(launcherPackage, notNullValue());
         mDevice.wait(Until.hasObject(By.pkg(launcherPackage).depth(0)), LAUNCH_TIMEOUT);
 
-        launchApp();
+        launchAndWaitApp();
+    }
+
+    @After
+    public void cleanUp() throws RemoteException {
+        closeApp();
     }
 
     @Test
@@ -84,13 +91,14 @@ public class TiktokSearchTest {
                 break;
             }
             boolean isSucceed = doSearch(key);
+//            boolean isSucceed = true;
             if (!isSucceed) {
                 failCount++;
-                if (failCount >= 5) {
+                if (failCount > 5) {
                     restoreSearchKey(key);
                     throw new RuntimeException("DeviceScrapped");
                 }
-                restartApp(failCount >= 3);
+                restartApp((failCount / 3) == 0);
                 continue;
             }
             failCount = 0;
@@ -100,6 +108,101 @@ public class TiktokSearchTest {
                 hangoutCountdown = 2 + random.nextInt(1);
             }
         }
+    }
+
+    private void launchApp() {
+        // Solution A:
+//        Context context = getApplicationContext();
+//        final Intent intent = context.getPackageManager()
+//                .getLaunchIntentForPackage(TARGET_PACKAGE);
+//        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);    // Clear out any previous instances
+//        context.startActivity(intent);
+
+        // Solution B:
+        mDevice.pressHome();
+        BySelector selector = By.pkg("com.android.launcher3").clazz("android.widget.TextView").text("抖音").depth(7, 8);
+        UiObject2 appIcon = mDevice.wait(Until.findObject(selector), 1000);
+        if (appIcon != null) {
+            appIcon.click();
+        }
+    }
+
+    private void closeApp() throws RemoteException {
+        // Solution A:
+        // mDevice.executeShellCommand("am force-stop " + TARGET_PACKAGE);
+
+        // Solution B:
+        mDevice.pressHome();
+        mDevice.pressRecentApps();
+        BySelector selector = By.res("com.android.systemui", "task_view_bar")
+                .hasChild(By.res("com.android.systemui", "title").text("抖音"))
+                .hasChild(By.res("com.android.systemui", "dismiss_task"));
+        UiObject2 o = mDevice.wait(Until.findObject(selector), 5000);
+        if (o != null) {
+            o.findObject(By.res("com.android.systemui", "dismiss_task")).click();
+        }
+        mDevice.pressHome();
+    }
+
+    private void restartApp(boolean clearData) {
+        try {
+            closeApp();
+            if (clearData) {
+                mDevice.executeShellCommand("pm clear " + TARGET_PACKAGE);
+            }
+        } catch (IOException | RemoteException e) {
+            e.printStackTrace();
+        }
+        SystemClock.sleep(1000);
+        launchAndWaitApp();
+    }
+
+    /**
+     * 弹窗Resource表：
+     * bco 个人信息保护指引
+     * kls 上滑查看更多视频
+     * eeh 儿童、青少年使用须知
+     * ejw 检测更新，以后再说
+     * com.android.packageinstaller:id/permission_allow_button 系统权限申请弹窗
+     */
+    private void launchAndWaitApp() {
+        BySelector[] selectors = {
+                By.res(TARGET_PACKAGE, "l__"),
+                By.res(TARGET_PACKAGE, "bco"),
+                By.res(TARGET_PACKAGE, "eeh"),
+                By.res(TARGET_PACKAGE, "ejw"),
+                By.res("com.android.packageinstaller", "permission_allow_button")
+        };
+        BySelector foundSelector = null;
+        // try start app with retry
+        for (int i = 0; i < 3 && foundSelector == null; i++) {
+            launchApp();
+            mDevice.wait(Until.hasObject(By.pkg(TARGET_PACKAGE).depth(0)), LAUNCH_TIMEOUT);
+            foundSelector = waitOne(selectors, 25000, 1000, 0);
+            if (foundSelector == null) {
+                try {
+                    closeApp();
+                } catch (RemoteException e) {
+                    e.printStackTrace();
+                }
+                SystemClock.sleep(2000);
+            }
+        }
+        if (foundSelector == null) {
+            throw new RuntimeException("BootMayNotFinish");
+        }
+        Log.i(LOG_TAG, "APP boot finish");
+
+        BySelector[] popUpSelectors = Arrays.copyOfRange(selectors, 1, selectors.length);
+        while ((foundSelector = waitOne(popUpSelectors, 3000, 500, 500)) != null) {
+            Log.i(LOG_TAG, "found popup: " + foundSelector.toString());
+            mDevice.findObject((foundSelector)).click();
+        }
+        // 上滑两次，跳过引导
+        Log.i(LOG_TAG, "swipe before search");
+        scrollRecommend();
+        SystemClock.sleep(500);
+        scrollRecommend();
     }
 
     /**
@@ -127,11 +230,14 @@ public class TiktokSearchTest {
 
         // select scrollable video node that has valid content/child
         mDevice.wait(Until.hasObject(By.res(TARGET_PACKAGE, "exk")), 10000);
-        SystemClock.sleep(500);
-        UiObject2 searchResult = mDevice.findObject(By.res(TARGET_PACKAGE, "exk").hasChild(By.pkg(TARGET_PACKAGE)));
+        UiObject2 searchResult = mDevice.wait(Until.findObject(By.res(TARGET_PACKAGE, "exk").hasChild(By.pkg(TARGET_PACKAGE))), 6000);
         if (searchResult != null) {
             for (int i = 0; i < 4; i++) {
-                searchResult.scroll(Direction.DOWN, 2 + random.nextFloat() * 0.2f, 4000 + random.nextInt(1000));
+                try {
+                    searchResult.scroll(Direction.DOWN, 2 + random.nextFloat() * 0.2f, 4000 + random.nextInt(1000));
+                } catch (StaleObjectException e) {
+                    // ignore androidx.test.uiautomator.StaleObjectException
+                }
                 SystemClock.sleep(100 + random.nextInt(200));
             }
             return true;
@@ -160,10 +266,6 @@ public class TiktokSearchTest {
         Log.d(LOG_TAG, "hangout end");
     }
 
-    @After
-    public void cleanUp() {
-        forceCloseApp();
-    }
 
     private String getSearchKey() {
         Request request = new Request.Builder().url(KEY_SERVER).build();
@@ -184,70 +286,6 @@ public class TiktokSearchTest {
         Request request = new Request.Builder().url(builder.build()).build();
         try {
             client.newCall(request).execute();
-        } catch (IOException e) {
-        }
-    }
-
-    /**
-     * 弹窗Resource表：
-     * bco 个人信息保护指引
-     * kls 上滑查看更多视频
-     * eeh 儿童、青少年使用须知
-     * ejw 检测更新，以后再说
-     * com.android.packageinstaller:id/permission_allow_button 系统权限申请弹窗
-     */
-    private void launchApp() {
-        Context context = getApplicationContext();
-        final Intent intent = context.getPackageManager()
-                .getLaunchIntentForPackage(TARGET_PACKAGE);
-        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK);    // Clear out any previous instances
-        context.startActivity(intent);
-
-        // Wait for the app to appear
-        mDevice.wait(Until.hasObject(By.pkg(TARGET_PACKAGE).depth(0)), LAUNCH_TIMEOUT);
-
-        BySelector[] selectors = {
-                By.res(TARGET_PACKAGE, "l__"),
-                By.res(TARGET_PACKAGE, "bco"),
-                By.res(TARGET_PACKAGE, "eeh"),
-                By.res(TARGET_PACKAGE, "ejw"),
-                By.res("com.android.packageinstaller", "permission_allow_button")
-        };
-        // 等待视频或弹窗，标志启动完成
-        BySelector foundSelector = waitOne(selectors, 30000, 200, 0);
-        if (foundSelector == null) {
-            throw new RuntimeException("BootMayNotFinish");
-        }
-        Log.i(LOG_TAG, "APP boot finish");
-
-        BySelector[] popUpSelectors = Arrays.copyOfRange(selectors, 1, selectors.length);
-        while ((foundSelector = waitOne(popUpSelectors, 3000, 500, 500)) != null) {
-            Log.i(LOG_TAG, "found popup: " + foundSelector.toString());
-            mDevice.findObject((foundSelector)).click();
-        }
-        // 上滑两次，跳过引导
-        Log.i(LOG_TAG, "swipe before search");
-        scrollRecommend();
-        SystemClock.sleep(500);
-        scrollRecommend();
-    }
-
-    private void restartApp(boolean clearData) {
-        forceCloseApp();
-        if (clearData) {
-            try {
-                mDevice.executeShellCommand("pm clear " + TARGET_PACKAGE);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        SystemClock.sleep(1000);
-        launchApp();
-    }
-
-    private void forceCloseApp() {
-        try {
-            mDevice.executeShellCommand("am force-stop " + TARGET_PACKAGE);
         } catch (IOException e) {
         }
     }
