@@ -112,7 +112,7 @@ Xposed是一个运行在Android系统的hook框架，通过对`Zygote`线程的�
 
 中间人攻击需要在客户端(Android)安装代理颁发的CA证书，安卓7.0以后证书必须安装到系统证书目录下（需ROOT）[教程](https://blog.zhangkunzhi.com/2020/02/10/%E5%AE%89%E5%8D%93%E5%AF%BC%E5%85%A5%E8%AF%81%E4%B9%A6%E5%88%B0%E7%B3%BB%E7%BB%9F%E7%9B%AE%E5%BD%95%E4%B8%AD/index.html)，而部分应用采用了[ssl pinning](http://fiddler.wikidot.com/certpinning)技术，只信任特定证书，表现形式为：即使已将fiddler证书安装到系统证书目录，抓包依然报网络错误或无法解码`Fiddler's HTTPS Decryption feature is enabled, but this specific tunnel was configured not to be decrypted`
 
-通过反编译抖音APP可以看到抖音使用了`okhttp3`包，推测ssl pinning由该包实现，验证方法位于`okhttp3.CertificatePinner`类，方法签名：
+通过反编译抖音APP可以看到抖音使用了`okhttp3`包，推测ssl pinning由该包实现，相关类`okhttp3.CertificatePinner`，方法签名：
 ```java
 public void check(String, List)
 ```
@@ -136,25 +136,73 @@ XposedHelpers.findAndHookMethod("okhttp3.CertificatePinner", classLoader, "check
 
 清除抖音APP数据后重新启动，新生成的openudid和andorid_id一致，可以判断符合如上策略，因此可通过更换android_id间接更换openudid
 
-device_id值和Android的`Device ID/IMEI`不同，参考[项目](https://github.com/coder-fly/douyin_device_register)，推测device_id根据mac地址和openudid生成。直接替换mac地址文件存在问题且高版本安卓难以替换
+device_id值和Android的`Device ID/IMEI`不同，推测device_id根据mac地址和openudid生成（[参考](https://github.com/coder-fly/douyin_device_register)），想要生成新的device_id需要实现更换mac。直接替换mac地址文件存在问题（如导致通过wlan连接的adb断连）且高版本安卓难以替换，因此使用xposed向抖音返回假的可更换的mac地址来解决。
+
+android 6.0及以上获取mac地址方式如下：
+```java
+public String getMacAddress() throws SocketException {
+    Enumeration enumeration = NetworkInterface.getNetworkInterfaces();
+    while (enumeration.hasMoreElements()) {
+        NetworkInterface networkInterface = (NetworkInterface) enumeration.nextElement();
+        byte[] arrayOfByte = networkInterface.getHardwareAddress();
+        if (arrayOfByte == null || arrayOfByte.length == 0) {
+            continue;
+        }
+        if (!networkInterface.getName().equals("wlan0")) {
+            continue;
+        }
+
+        StringBuilder stringBuilder = new StringBuilder();
+        for (byte b : arrayOfByte) {
+            stringBuilder.append(String.format("%02X:", new Object[]{Byte.valueOf(b)}));
+        }
+        if (stringBuilder.length() > 0) {
+            stringBuilder.deleteCharAt(stringBuilder.length() - 1);
+        }
+        return stringBuilder.toString();
+    }
+    return null;
+}
+```
+需要hook的方法为`java.net.NetworkInterface`类的`getHardwareAddress`，方法签名：
+```java
+public byte[] getHardwareAddress()
+```
+现有模块没找到有效的，自行实现，macaddr-changer的xposed入口位于`com.hamster.macaddresschanger.MainXposed`，核心代码：
+```java
+// 只对抖音生效
+if (lpparam.packageName.equals("com.ss.android.ugc.aweme")) {
+    findAndHookMethod("java.net.NetworkInterface", lpparam.classLoader, "getHardwareAddress", XC_MethodReplacement.returnConstant(currMac));
+}
+```
 
 基于以上，可以实现设备被封禁后自动更换标识继续抓取
-
-
-
-
 
 > 另外抖音似乎针对**多设备同IP**的情况有限制，在同一台linux上起多个模拟器时，只有一到两台模拟器有搜索结果  
 > 这里通过在多台开发机运行mitmproxy，将模拟器分别连接到不同mitmproxy实例解决
 
-#### runner
+#### APP自动化控制
 
+常用的连接Android模拟器控制APP的框架有UI Automator和APPium，后者是基于前者的封装支持python但性能较差，因此这里直接选用UI Automator
 
+UI Automator 是一个界面测试框架，适用于整个系统上以及多个已安装应用间的跨应用功能界面测试，通过该框架可以实现页面元素检查、输入、点击、滑动和拖拽等
 
-#### macaddr-changer
+instrument-test用于控制抖音APP，基于UI Automator，实现了如下操作：
+1. 启动抖音
+2. 识别启动弹框（位置、存储权限申请）并跳过
+3. 点击主页搜索图表进入搜索
+4. 通过http请求获取查询词
+5. 将查询词设置到输入框
+6. 点击查询按钮
+7. 向下滚动触发动态加载
 
+其中部分步骤需要等待上个操作完成，通过页面元素检查和等待实现，不详细展开
 
-#### ls
+下面简单介绍一些需要特殊注意的点
+
+1. 页面元素定位  
+   通常可使用resource_id定位页面元素(`By.res("pkgName", "resouceId")`)，必要时可加入depth和children的信息进一步限制范围  
+   
 
 ## adb命令整理
 
