@@ -24,7 +24,7 @@
 - [xposed](https://repo.xposed.info/module/de.robv.android.xposed.installer) : 运行时hook，可用来绕过APP的一些限制
 - [genymotion](https://www.genymotion.com/download/) : 安卓模拟器
 - [virtulbox](https://www.virtualbox.org/wiki/Downloads) : genymotion依赖
-- vnc+xfce : VNC可用于远程连接Linux图形界面；genymotion不支持无头模式，必须安装图形界面
+- vnc+xfce : VNC可用于远程连接Linux图形界面；genymotion不支持无头模式，必须安装图形界面（或者使用Xvfb可能可行，未进一步了解）
 
 ## 详细步骤
 
