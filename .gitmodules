@@ -1,3 +1,6 @@
 [submodule "instrument-test"]
 	path = instrument-test
 	url = https://github.com/Ghamster0/AppSpiderCtrl.git
+[submodule "macaddr-changer"]
+	path = macaddr-changer
+	url = https://github.com/Ghamster0/macaddr-changer.git
